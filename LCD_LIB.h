@@ -1,6 +1,20 @@
+
+
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+
+#include <xc.h>
+
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////// I/O PINOUT AND DEFINITIONS //////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
+
+
+#define HIGH    1
+#define LOW     0
 
 // LCD
 #define LCD_DATA_DIR            TRISC 
@@ -12,16 +26,7 @@
 #define LCD_EN_DIR               TRISDbits.TRISD5     // E signal for LCD 
 #define LCD_EN                   PORTDbits.RD5     // E signal for LCD 
 
-#define LCD_DELAY_MSG     500
 
-
-//#define LCD_RS      RD2       // RS
-//#define TRISRS      TRISD2
-//
-//#define LCD_EN      RD3      // EN
-//#define TRISEN      TRISD3
-//
-//
 #define LCD_RD4     RC4        // D4
 #define LCD_RD4_DIR TRISC4
 
@@ -34,14 +39,13 @@
 #define LCD_RD7     RC7        // D7
 #define LCD_RD7_DIR TRISC7
 
-#define HIGH    1
-#define LOW     0
+
+#define LCD_DELAY_MSG     500
+
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// VARIABLES  //////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-
-unsigned char i; 
 
 #define CLEAR_LCD               0x01
 #define RETURN_HOME             0x02
@@ -85,9 +89,9 @@ unsigned char i;
 ///////////////////////////////////////////////////////////////////////////////
 
 void LCD_Init();
-void Lcd_Cmd(unsigned char lcd_command);
-void LCD_sendData(unsigned char lcd_data);
-void LCD_MESSAGE(char * GENERAL_MESSAGE);
+
+void LCD_out(char * lcd_msg);
+void LCD_Message(unsigned char * Msg_Line1, unsigned char * Msg_Line2);
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////// CONTROL FUNCTIONS  //////////////////////////////
@@ -97,9 +101,9 @@ void LCD_MESSAGE(char * GENERAL_MESSAGE);
  
 /* Write control word to LCD */ 
 
-static void LCD_nibble(unsigned char data){
+static unsigned char LCD_nibble(unsigned char data){
     
-//    char result = 1;
+    char result = 1;
     
     LCD_RD7 = (data & 0x08) >> 3;
     LCD_RD6 = (data & 0x04) >> 2;
@@ -110,14 +114,14 @@ static void LCD_nibble(unsigned char data){
     LCD_EN    = LOW; 
     _delay(1000);
     
-//    result = 0;
-//    
-//    return result;
+    result = 0;
+    
+    return result;
     
 }
 
 
-void Lcd_Cmd(unsigned char lcd_command){  
+static unsigned char LCD_Cmd(unsigned char lcd_command){  
     
     LCD_RD7_DIR = 1;
     while(LCD_RD7);
@@ -133,7 +137,7 @@ void Lcd_Cmd(unsigned char lcd_command){
 
  
 /* Write text data to LCD */ 
-void LCD_sendData(unsigned char lcd_data){    
+static unsigned char LCD_sendData(unsigned char lcd_data){    
     
     LCD_RD7_DIR = 1;
     while(LCD_RD7);
@@ -148,14 +152,12 @@ void LCD_sendData(unsigned char lcd_data){
     while(LCD_RD7);
     LCD_RD7_DIR = 0;
     
-    
 }
 
 // LCD MASTER FUNCTION
-
-void LCD_MESSAGE(char * GENERAL_MESSAGE){
-    for (int j=0; GENERAL_MESSAGE[j]!=0; j++)     
-        LCD_sendData(GENERAL_MESSAGE[j]); 
+void LCD_out(char * lcd_msg){
+    for (int j=0; lcd_msg[j]!=0; j++)     
+        LCD_sendData(lcd_msg[j]); 
 }
 
 /* LCD display initialization */ 
@@ -172,36 +174,28 @@ void LCD_Init(){
     _delay(15 * 1000);
 
     
-    Lcd_Cmd(RETURN_HOME);            // Return cursor to home position 
-    Lcd_Cmd(LCD_2LINES_5X8);         // Function Set - 8-bit, 2 lines, 5X7 
-    Lcd_Cmd(CLEAR_LCD);              // Clear display   
-    Lcd_Cmd(DISPLAY_ON_CURSOR_OFF);  // Display on, cursor off 
-    Lcd_Cmd(INCREMENT_CURSOR);       // Entry mode - inc addr, no shift 
+    LCD_Cmd(RETURN_HOME);            // Return cursor to home position 
+    LCD_Cmd(LCD_2LINES_5X8);         // Function Set - 8-bit, 2 lines, 5X7 
+    LCD_Cmd(CLEAR_LCD);              // Clear display   
+    LCD_Cmd(DISPLAY_ON_CURSOR_OFF);  // Display on, cursor off 
+    LCD_Cmd(INCREMENT_CURSOR);       // Entry mode - inc addr, no shift 
 } 
 
-//    for(long y = 0x00; y < 0xF0; y=y+0x10){
-//        LCD_nibble((y & 0xF0) >> 4);
-//        for(long x = 0; x < 1000; x++) _delay(1000);
-//    }
+void LCD_Message(char * LINE1_MSG, char * LINE2_MSG){
     
-//    unsigned long x;
-//    
-//    LCD_nibble((0x80 & 0xF0) >> 4);
-//    for(x = 0; x < 2000; x++) _delay(1000);
-//    LCD_nibble((0x40 & 0xF0) >> 4);
-//    for(x = 0; x < 2000; x++) _delay(1000);
-//    LCD_nibble((0x20 & 0xF0) >> 4);
-//    for(x = 0; x < 2000; x++) _delay(1000);
-//    LCD_nibble((0x10 & 0xF0) >> 4);
-//    for(x = 0; x < 2000; x++) _delay(1000);
-//    
-//    LCD_nibble(0x08);
-//    for(x = 0; x < 2000; x++) _delay(1000);
-//    LCD_nibble(0x04);
-//    for(x = 0; x < 2000; x++) _delay(1000);
-//    LCD_nibble(0x02);
-//    for(x = 0; x < 2000; x++) _delay(1000);
-//    LCD_nibble(0x01);
-//    for(x = 0; x < 2000; x++) _delay(1000);
+    LCD_Cmd(CLEAR_LCD);              // Clear display  
     
-//    Lcd_Cmd(0x53);         // Function Set - 8-bit, 2 lines, 5X7 
+    LCD_Cmd(HOME_LINE1);
+    for (int j = 0; LINE1_MSG[j] != 0; j++)     
+        LCD_sendData(LINE1_MSG[j]); 
+//    Lcd_Out(1, 8 - (strlen(buffer) / 2), buffer);
+    
+    LCD_Cmd(HOME_LINE2);
+    for (int j = 0; LINE2_MSG[j] != 0; j++)     
+        LCD_sendData(LINE2_MSG[j]); 
+//    Lcd_Out(1, 8 - (strlen(buffer) / 2), buffer);
+        
+    __delay_ms(LCD_DELAY_MSG);
+    
+}
+

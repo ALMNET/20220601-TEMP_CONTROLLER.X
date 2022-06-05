@@ -12,6 +12,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 #include "Fuses.h"
@@ -85,7 +86,6 @@ char buffer[64];
 ///////////////////////////////////////////////////////////////////////////////
 
 void delay_ms(unsigned long delay_value);
-void LCD_Function(char LINE1_MSG[], char LINE2_MSG[]);
 
 void ADC_Init(void);
 unsigned int ADC_Read(void);
@@ -132,10 +132,13 @@ void main(void){
 //    ADC_Init();  
     
 //    LCD_MESSAGE("Hola");
-    
 //    LCD_Function("Hola", "Culo");
+//    LCD_Message("Hola", "Culo");
     
-    LCD_sendData('H');
+    sprintf(buffer, "Valor = %u", 250);
+    LCD_out(buffer);
+    
+//    LCD_sendData('H');
     
     
     while(1){
@@ -248,20 +251,4 @@ unsigned int ADC_Read(void){
 
 
 
-void LCD_Function(char LINE1_MSG[], char LINE2_MSG[]){
-    unsigned int j;
-    
-    Lcd_Cmd(CLEAR_LCD);              // Clear display  
-    
-    Lcd_Cmd(HOME_LINE1);
-    for (j = 0; LINE1_MSG[j] != 0; j++)     
-        LCD_sendData(LINE1_MSG[j]); 
-    
-    
-    Lcd_Cmd(HOME_LINE2);
-    for (j = 0; LINE2_MSG[j] != 0; j++)     
-        LCD_sendData(LINE2_MSG[j]); 
-        
-    delay_ms(LCD_DELAY_MSG);
-    
-}
+
