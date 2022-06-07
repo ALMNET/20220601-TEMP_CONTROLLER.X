@@ -18,6 +18,7 @@
 #include "Fuses.h"
 
 #define _XTAL_FREQ 4000000
+//#define _XTAL_FREQ 500000
 
 //#include "LCD.h"
 #include "LCD_LIB.h"
@@ -48,6 +49,8 @@
 
 #define DISP_TIME   1
 
+#define PWM_PERIOD_US   200000
+
 //////////////////////////////////// INPUTS ////////////////////////////////////
 
 // PORTA 
@@ -56,15 +59,9 @@
 
 /////////////////////////////////// OUTPUTS ////////////////////////////////////
 
-// PORTE
-#define FAN_1_DIR           TRISE0
-#define FAN_1               RE0
-
-#define FAN_2_DIR           TRISE1
-#define FAN_2               RE1
-
-#define FAN_3_DIR           TRISE2
-#define FAN_3               RE2
+// SERVO
+#define SERVO_DIR           TRISC2
+#define SERVO               RC2
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// VARIABLES  //////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -72,16 +69,81 @@
 // Temperature value obtained from ADC Read
 unsigned int temperature;
 
+unsigned long pwmDutyTmr2 = 5000;
+unsigned long pwmDutyCnt = 0;
+unsigned long pwmPeriod = 0;
+
 char buffer[64];
 
 ///////////////////////////////////////////////////////////////////////////////
 /////////////////////////// PROTOTYPES FUNCTIONS  /////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
+// General delay function
 void delay_ms(unsigned long delay_value);
 
+// ADC Functions
 void ADC_Init(const unsigned char adcEnabledChannels);
 unsigned int ADC_Read(unsigned char adcChannel);
+
+// PWM Functions for servomotor control
+void PWM_Init();
+void PWM_Update(unsigned int PWMDuty);
+void tmr2_init();
+
+
+
+
+
+void interrupt ISR()
+{
+    if(TMR2IE == 1 && TMR2IF == 1){
+        TMR2IF = 0;
+        
+//unsigned long pwmDutyTmr2 = 0;
+//unsigned long pwmDutyCnt = 0;
+//unsigned long pwmPeriod = 0;
+//        #define PWM_PERIOD_US   20000
+        
+        
+        if(pwmPeriod < PWM_PERIOD_US)
+        {
+            if(pwmDutyCnt < pwmDutyTmr2)
+            {
+                if(!SERVO) SERVO = 1;
+                pwmDutyCnt++;
+            }
+            
+            SERVO = 0;
+            
+            pwmPeriod++;
+        }
+        else
+        {
+            pwmPeriod = 0;
+            pwmDutyCnt = 0;
+        }
+        
+    }
+    
+    
+    
+    
+    return;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -117,6 +179,10 @@ void main(void){
     ADC_Init(1);
     LCD_Init();
     
+    tmr2_init();
+    
+//    PWM_Init();
+    
     
     
 //    LCD_sendData('H');
@@ -129,10 +195,14 @@ void main(void){
         
 //        Lcd_Out(1, 8 - (strlen(buffer) / 2), buffer);
         
-        sprintf(buffer, "Valor = %04u", ADC_Read(0));
+        temperature = (unsigned int) ADC_Read(TEMP_CHANNEL);
+        
+        PWM_Update(temperature);
+        
+        sprintf(buffer, "Valor = %04u", temperature);
         LCD_out(1, 1, buffer);
         
-        delay_ms(500);
+        delay_ms(100);
     }
     
     
@@ -217,12 +287,11 @@ void ADC_Init(const unsigned char adcEnabledChannels){
 }
 
 /**
- * @brief       Reads the 
+ * @brief       Reads the ADC channel according to parameter
  *              
  *   
- * @param[in]   pos_y: 
- *              y position coord. must be 1 or 2, otherwise the 
- *              function will return an error (1)
+ * @param[in]   adcChannel: 
+ *              Analog channel to read
  * @param[in]   pos_x: 
  *              x position coord. must be between 1 to 16, otherwise the 
  *              function will return an error (1)
@@ -230,9 +299,7 @@ void ADC_Init(const unsigned char adcEnabledChannels){
  *              Pointer / Array to the message to send. If the message
  *              is empty, the function will return 2
  * 
- * @return      0 if the command is sucessfully sent
- *              1 if the position is wrong
- *              2 if the message is empty
+ * @return      10 bit 
  */
 
 unsigned int ADC_Read(unsigned char adcChannel){
@@ -254,6 +321,117 @@ unsigned int ADC_Read(unsigned char adcChannel){
     
     // Return ADC_CONV Value
     return ADCConv;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////// PWM INIT ///////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief       Initializes the PWM Module for the servo
+ *              
+ * @param       None 
+ * 
+ * @return      None 
+ */
+
+void PWM_Init(){
+    // 1.- Disable the PWM pin (CCPx) Outputdriver as an input
+    //     by setting the associated TRIS Bit
+    TRISC2 = INPUT;
+    
+    // 2.- Set the PWM period by loading the PR2 Register
+    PR2 = 0b10011011;
+    
+    // 3.- Configure the CCP module for the PWM mode by loading
+    //     the CCPxCON register with the appropiate values
+    CCP1CON = 0b00111100; // duty lowest bits + PWM mode
+    
+    // 4.- Set the PWM duty cycle by loading the CCPRxL register
+    //     and DCxB<1:0> bits of the CCPxCON register
+    CCPR1L = 0b00000111;  // set duty MSB
+    
+    // 5.- Configure and start Timer 2:
+    //     * Clear the TMR2IF interrupt flag of the PIR1 Register
+    TMR2IF = 0;
+    
+    //     * Set the TIMER2 Prescale value by loading the T2CKPS 
+    //       bits on the T2CON register and enable it by setting
+    //       the TMR2ON bit on the T2CON register
+    T2CON = 0b00000111; // prescaler + turn on TMR2;
+    
+    // 6.- Enable PWM output after a new PWM cycle has started
+    //      * Wait until Timer2 overflows (TMR2IF bit of the PIR1 reg)
+    while(TMR2IF == 0);
+    
+    //      * Enable the CCPx pin output driver by clearing the 
+    //        associated TRIS bit
+    TRISC2 = OUTPUT;
+}
+
+/**
+ * @brief       Updates the PWM duty cycle
+ *              
+ *   
+ * @param[in]   PWMDuty: 
+ *              PWM Duty Cycle value
+ * 
+ * @return      None
+ */
+
+void PWM_Update(unsigned int PWMDuty){
+    unsigned int PWM_L, PWM_H;
+    
+    double pulseWidth;
+
+    unsigned long PWMValue = 0;
+    
+    // Pulse Width value (From 1 to 1+0.99)
+    pulseWidth = 1 + (PWMDuty * 0.0009765);
+	
+    // PWM Value, where 31 is for 1 mS (5%) and 62 is for 2 mS (10%)
+	PWMValue = (unsigned long ) (31 * pulseWidth);
+    
+    // Rotates PWM Value 2 bits and save it into PWM_H
+    PWM_H = PWMValue >> 2;
+    
+    // Clears 2 PWM LSBs
+    PWM_L = (unsigned int) (CCP1CON & 0b11001111);
+    
+    // Filters 6 More significant bits from PWM Value and save it itself
+    PWMValue &= 0b00000011;
+    
+    // PWM_VALUE Rotates itself 4 bits to left (To save into CCP1CON 5:4 bits)
+    PWMValue = PWMValue << 4;
+    
+    // Saves it into PWM_L (Which will be saved on CCP1CON to update PWM
+    // Pulse Witdh)
+    PWM_L = PWMValue + PWM_L;
+    
+    // Updating Values
+    CCP1CON = PWM_L;
+    CCPR1L  = PWM_H;
+    
+}
+
+
+
+
+
+
+void tmr2_init()
+{
+  T2CON	     = 0x04;
+  PR2        = 9;
+  TMR2IE     = 1;
+  INTCON     = 0xC0;
+  
+  INTCONbits.GIE = 1;
+  INTCONbits.PEIE = 1;
+  
+  PIE1bits.TMR2IE = 1;
+  
+  SERVO_DIR = OUTPUT;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
