@@ -55,13 +55,6 @@
 #define TEMP_CHANNEL        RA0
 
 /////////////////////////////////// OUTPUTS ////////////////////////////////////
-// PORTB
-#define DISP1_PORT_DIR      TRISB
-#define DISP1_PORT          PORTB
-
-// PORTC
-#define DISP2_PORT_DIR      TRISC
-#define DISP2_PORT          PORTC
 
 // PORTE
 #define FAN_1_DIR           TRISE0
@@ -87,12 +80,10 @@ char buffer[64];
 
 void delay_ms(unsigned long delay_value);
 
-void ADC_Init(void);
-unsigned int ADC_Read(void);
-//
-//void Fan_config_1();
-//void Fan_config_2();
-//void Fan_config_3();
+void ADC_Init(const unsigned char adcEnabledChannels);
+unsigned int ADC_Read(unsigned char adcChannel);
+
+
 
 ///////////////////////////////////////////////////////////////////////////////
 //////////////////////////////// MAIN FUNCTION ////////////////////////////////
@@ -123,20 +114,10 @@ void main(void){
 //    
 //    PORTC = 0;
     
-    
+    ADC_Init(1);
     LCD_Init();
-//    Lcd_Cmd (LCD_CURSOR_OFF);
-//    Lcd_Cmd (LCD_CURSOR_OFF);
-//    Lcd_Cmd (LCD_CLEAR); 
-        
-//    ADC_Init();  
     
-//    LCD_MESSAGE("Hola");
-//    LCD_Function("Hola", "Culo");
-//    LCD_Message("Hola", "Culo");
     
-    sprintf(buffer, "Valor = %u", 250);
-    LCD_out(buffer);
     
 //    LCD_sendData('H');
     
@@ -147,6 +128,9 @@ void main(void){
 //        sprintf(buffer, "ADC Value  = %04lu", ADC_Read());
         
 //        Lcd_Out(1, 8 - (strlen(buffer) / 2), buffer);
+        
+        sprintf(buffer, "Valor = %04u", ADC_Read(0));
+        LCD_out(1, 1, buffer);
         
         delay_ms(500);
     }
@@ -162,7 +146,7 @@ void main(void){
         // 0.489 Is a conversion factor according to LM35 output
         // The Internal ADC step at 10bit 5v is 5v/2^10-1, which means
         // 5/1023 = 0.48875. we can approximate it to 0.489 for the LM35
-        temperature = (unsigned int)(ADC_Read() * 0.489);
+        temperature = (unsigned int)(ADC_Read(TEMP_CHANNEL) * 0.489);
         
         
         
@@ -184,32 +168,78 @@ void delay_ms(unsigned long delay_value){
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-///////////////////////// DISPLAYS CONVERSION FUNCTION /////////////////////////
+////////////////////////////////// ADC FUNCTIONS ///////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * @brief       Send a text to the LCD using a specific cursor position
+ *              
+ *   
+ * @param[in]   pos_y: 
+ *              y position coord. must be 1 or 2, otherwise the 
+ *              function will return an error (1)
+ * @param[in]   pos_x: 
+ *              x position coord. must be between 1 to 16, otherwise the 
+ *              function will return an error (1)
+ * @param[in]   lcd_msg: 
+ *              Pointer / Array to the message to send. If the message
+ *              is empty, the function will return 2
+ * 
+ * @return      0 if the command is sucessfully sent
+ *              1 if the position is wrong
+ *              2 if the message is empty
+ */
 
-void ADC_Init(void){
-    ADCON1bits.ADFM = 1;        // Right Justified
+void ADC_Init(const unsigned char adcEnabledChannels){
+    
+    // Channel enabler / decoder (Configured to use up to 4 analog channels)
+    const unsigned char PCFG_DECODER[5] = {0, 0b1110, 0b0101, 0b0100, 0b0011}; 
+    
+    // Enables the number of required analog channels
+    ADCON1bits.PCFG = PCFG_DECODER[adcEnabledChannels];
+    
+    ADCON1bits.ADFM = 1;        // ADC ADDRESS Right Justified
     ADCON1bits.ADCS2 = 1;       // RC Clock
     
     // RA0 Analog
-    ADCON1bits.PCFG3 = 1;       
-    ADCON1bits.PCFG2 = 1;
-    ADCON1bits.PCFG1 = 1;
-    ADCON1bits.PCFG0 = 0;
+//    ADCON1bits.PCFG3 = 1;       
+//    ADCON1bits.PCFG2 = 1;
+//    ADCON1bits.PCFG1 = 1;
+//    ADCON1bits.PCFG0 = 0;
     
     ADCON0bits.ADCS = 3;       // RC Clock
     
-    ADCON0bits.CHS = 0;       // Channel 0 Fixed
+//    ADCON0bits.CHS = 0;       // Channel 0 Fixed
     
     ADCON0bits.GO_DONE = 0;
     
     ADCON0bits.ADON = 1;        // ADC Module ON
 }
 
-unsigned int ADC_Read(void){
+/**
+ * @brief       Reads the 
+ *              
+ *   
+ * @param[in]   pos_y: 
+ *              y position coord. must be 1 or 2, otherwise the 
+ *              function will return an error (1)
+ * @param[in]   pos_x: 
+ *              x position coord. must be between 1 to 16, otherwise the 
+ *              function will return an error (1)
+ * @param[in]   lcd_msg: 
+ *              Pointer / Array to the message to send. If the message
+ *              is empty, the function will return 2
+ * 
+ * @return      0 if the command is sucessfully sent
+ *              1 if the position is wrong
+ *              2 if the message is empty
+ */
+
+unsigned int ADC_Read(unsigned char adcChannel){
     
     unsigned int ADCConv;       // Temporal variable
+    
+    ADCON0bits.CHS = adcChannel;
     
     PIR1bits.ADIF = 0;          // Clears ADC interruption Flag (ADIF)
     delay_ms(20);               // 20mS Data Adquisition Time
