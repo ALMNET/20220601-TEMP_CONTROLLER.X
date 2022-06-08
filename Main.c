@@ -20,7 +20,6 @@
 #define _XTAL_FREQ 4000000
 //#define _XTAL_FREQ 500000
 
-//#include "LCD.h"
 #include "LCD_LIB.h"
 
 
@@ -49,8 +48,7 @@
 
 #define DISP_TIME   1
 
-#define PWM_PERIOD_US   200000
-
+#define PWM_PERIOD_US   100
 //////////////////////////////////// INPUTS ////////////////////////////////////
 
 // PORTA 
@@ -69,11 +67,13 @@
 // Temperature value obtained from ADC Read
 unsigned int temperature;
 
-unsigned long pwmDutyTmr2 = 5000;
+unsigned long pwmDutyTmr2 = 70;
 unsigned long pwmDutyCnt = 0;
 unsigned long pwmPeriod = 0;
 
 char buffer[64];
+
+unsigned char servoFlag = 0;
 
 ///////////////////////////////////////////////////////////////////////////////
 /////////////////////////// PROTOTYPES FUNCTIONS  /////////////////////////////
@@ -105,21 +105,33 @@ void interrupt ISR()
 //unsigned long pwmPeriod = 0;
 //        #define PWM_PERIOD_US   20000
         
-        
+//        SERVO = ~SERVO;
         if(pwmPeriod < PWM_PERIOD_US)
         {
-            if(pwmDutyCnt < pwmDutyTmr2)
+//            if(pwmDutyCnt < (pwmDutyTmr2 / 100 * PWM_PERIOD_US))
+            if(pwmDutyCnt < 10)
             {
-                if(!SERVO) SERVO = 1;
+//                if(servoFlag == 0){
+                    SERVO = 1;
+//                    servoFlag = 255;
+//                }
+                
                 pwmDutyCnt++;
             }
             
-            SERVO = 0;
+            else{
+//                if(servoFlag == 255)
+//                {
+                    SERVO = 0;
+//                    servoFlag = 0;
+//                }
+            }
             
             pwmPeriod++;
         }
         else
         {
+//            SERVO = ~SERVO;
             pwmPeriod = 0;
             pwmDutyCnt = 0;
         }
@@ -422,7 +434,7 @@ void PWM_Update(unsigned int PWMDuty){
 void tmr2_init()
 {
   T2CON	     = 0x04;
-  PR2        = 9;
+  PR2        = 199;
   TMR2IE     = 1;
   INTCON     = 0xC0;
   
