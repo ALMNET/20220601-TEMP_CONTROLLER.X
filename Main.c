@@ -4,7 +4,7 @@
  * File:   Main.c
  * Author: ALMNET
  *
- * Created on may 8, 2022, 16:14
+ * Created on Jun 3, 2022, 16:14
  */
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -65,15 +65,17 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 // Temperature value obtained from ADC Read
-unsigned int temperature;
+unsigned int temperature;           // Read temperature from PT100 / LM35
 
-unsigned long pwmDutyTmr2 = 70;
-unsigned long pwmDutyCnt = 0;
-unsigned long pwmPeriod = 0;
+unsigned long pwmDutyValue = 70;    // Duty Cycle, from 0 to 100 (0 to 100%)
+unsigned long pwmDutyCnt = 0;       // Duty counter (increments until reach pwmDutyValue)
+unsigned long pwmPeriod = 0;        // pwm Period counter
 
-char buffer[64];
+unsigned long tmr2Counter = 0;      // Counter to enable or disable the tmr2 interrupt
+                                    // if this counter is 0, the tmr2 will be disabled
+                                    // otherwise it will be enabled.
 
-unsigned char servoFlag = 0;
+char buffer[64];                    // Buffer for lcd messages
 
 ///////////////////////////////////////////////////////////////////////////////
 /////////////////////////// PROTOTYPES FUNCTIONS  /////////////////////////////
@@ -92,71 +94,45 @@ void PWM_Update(unsigned int PWMDuty);
 void tmr2_init();
 
 
-
-
+///////////////////////////////////////////////////////////////////////////////
+////////////////////////////// INTERRUPT HANDLING /////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 
 void interrupt ISR()
 {
     if(TMR2IE == 1 && TMR2IF == 1){
+        
         TMR2IF = 0;
         
-//unsigned long pwmDutyTmr2 = 0;
-//unsigned long pwmDutyCnt = 0;
-//unsigned long pwmPeriod = 0;
-//        #define PWM_PERIOD_US   20000
-        
-//        SERVO = ~SERVO;
-        if(pwmPeriod < PWM_PERIOD_US)
+        if(tmr2Counter)
         {
-//            if(pwmDutyCnt < (pwmDutyTmr2 / 100 * PWM_PERIOD_US))
-            if(pwmDutyCnt < 10)
+//            tmr2Counter--;
+            if(pwmPeriod < PWM_PERIOD_US)
             {
-//                if(servoFlag == 0){
+                if(pwmDutyCnt < pwmDutyValue)
+                {
                     SERVO = 1;
-//                    servoFlag = 255;
-//                }
-                
-                pwmDutyCnt++;
-            }
-            
-            else{
-//                if(servoFlag == 255)
-//                {
+
+                    pwmDutyCnt++;
+                }
+
+                else{
                     SERVO = 0;
-//                    servoFlag = 0;
-//                }
+                }
+
+                pwmPeriod++;
             }
-            
-            pwmPeriod++;
-        }
-        else
-        {
-//            SERVO = ~SERVO;
-            pwmPeriod = 0;
-            pwmDutyCnt = 0;
+            else
+            {
+                pwmPeriod = 0;
+                pwmDutyCnt = 0;
+                tmr2Counter--;
+            }
         }
         
     }
-    
-    
-    
-    
     return;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -165,40 +141,15 @@ void interrupt ISR()
 
 void main(void){
     
-//    // PORTA 
-//    TEMP_CHANNEL_DIR    = INPUT;
-//   
-//    // PORTB
-//    DISP1_PORT_DIR  = OUTPUT;
-//    
-//    // PORTD
-//    DISP2_PORT_DIR = OUTPUT;
-//    
-//    // PORTE
-//    FAN_1_DIR = OUTPUT;
-//    FAN_2_DIR = OUTPUT;
-//    FAN_3_DIR = OUTPUT;
-//    
-//    
-//    // CLEARING PORT OUTPUTS
-//    
-//    DISP1_PORT = 0;
-//    DISP2_PORT = 0;
-//    PORTE = 0;
-//    
-//    PORTC = 0;
+
+    TEMP_CHANNEL_DIR    = INPUT;
+    SERVO_DIR = OUTPUT;
     
     ADC_Init(1);
     LCD_Init();
     
     tmr2_init();
-    
-//    PWM_Init();
-    
-    
-    
 //    LCD_sendData('H');
-    
     
     while(1){
         
@@ -244,7 +195,17 @@ void main(void){
 ///////////////////////////// AUXILIARY FUNCTIONS /////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-// Delay in milliseconds
+/**
+ * @brief       General Delay function
+ *              This function uses internal core cycles to create a delay
+ *   
+ * @param[in]   delay_value: 
+ *              32 bit value which sets the desired delay value in millisecs
+ *              for example, if delay_value = 5400 it means the delay
+ *              will be of 5400 millisecs or 5.4 secs
+ * 
+ * @return      None (void type function)
+ */
 void delay_ms(unsigned long delay_value){
     for(unsigned long x=0; x < delay_value; x++) __delay_ms(1);
 }
@@ -254,22 +215,13 @@ void delay_ms(unsigned long delay_value){
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @brief       Send a text to the LCD using a specific cursor position
- *              
+ * @brief       Initializes the internal ADC Module
  *   
- * @param[in]   pos_y: 
- *              y position coord. must be 1 or 2, otherwise the 
- *              function will return an error (1)
- * @param[in]   pos_x: 
- *              x position coord. must be between 1 to 16, otherwise the 
- *              function will return an error (1)
- * @param[in]   lcd_msg: 
- *              Pointer / Array to the message to send. If the message
- *              is empty, the function will return 2
+ * @param[in]   adcEnabledChannels: 
+ *              Number of analog channels to enable. In this case 4 is enough
+ *              for our requirement
  * 
- * @return      0 if the command is sucessfully sent
- *              1 if the position is wrong
- *              2 if the message is empty
+ * @return      None (void type function)
  */
 
 void ADC_Init(const unsigned char adcEnabledChannels){
@@ -281,19 +233,11 @@ void ADC_Init(const unsigned char adcEnabledChannels){
     ADCON1bits.PCFG = PCFG_DECODER[adcEnabledChannels];
     
     ADCON1bits.ADFM = 1;        // ADC ADDRESS Right Justified
+    
     ADCON1bits.ADCS2 = 1;       // RC Clock
+    ADCON0bits.ADCS = 3;        // RC Clock
     
-    // RA0 Analog
-//    ADCON1bits.PCFG3 = 1;       
-//    ADCON1bits.PCFG2 = 1;
-//    ADCON1bits.PCFG1 = 1;
-//    ADCON1bits.PCFG0 = 0;
-    
-    ADCON0bits.ADCS = 3;       // RC Clock
-    
-//    ADCON0bits.CHS = 0;       // Channel 0 Fixed
-    
-    ADCON0bits.GO_DONE = 0;
+    ADCON0bits.GO_DONE = 0;     // Conversion off
     
     ADCON0bits.ADON = 1;        // ADC Module ON
 }
@@ -301,17 +245,10 @@ void ADC_Init(const unsigned char adcEnabledChannels){
 /**
  * @brief       Reads the ADC channel according to parameter
  *              
- *   
  * @param[in]   adcChannel: 
  *              Analog channel to read
- * @param[in]   pos_x: 
- *              x position coord. must be between 1 to 16, otherwise the 
- *              function will return an error (1)
- * @param[in]   lcd_msg: 
- *              Pointer / Array to the message to send. If the message
- *              is empty, the function will return 2
  * 
- * @return      10 bit 
+ * @return      10 bit ADC value result from conversion
  */
 
 unsigned int ADC_Read(unsigned char adcChannel){
@@ -336,100 +273,17 @@ unsigned int ADC_Read(unsigned char adcChannel){
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////// PWM INIT ///////////////////////////////////
+//////////////////////// PWM CONFIG OVER TMR2 INTERRUPT ////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @brief       Initializes the PWM Module for the servo
- *              
- * @param       None 
- * 
- * @return      None 
- */
-
-void PWM_Init(){
-    // 1.- Disable the PWM pin (CCPx) Outputdriver as an input
-    //     by setting the associated TRIS Bit
-    TRISC2 = INPUT;
-    
-    // 2.- Set the PWM period by loading the PR2 Register
-    PR2 = 0b10011011;
-    
-    // 3.- Configure the CCP module for the PWM mode by loading
-    //     the CCPxCON register with the appropiate values
-    CCP1CON = 0b00111100; // duty lowest bits + PWM mode
-    
-    // 4.- Set the PWM duty cycle by loading the CCPRxL register
-    //     and DCxB<1:0> bits of the CCPxCON register
-    CCPR1L = 0b00000111;  // set duty MSB
-    
-    // 5.- Configure and start Timer 2:
-    //     * Clear the TMR2IF interrupt flag of the PIR1 Register
-    TMR2IF = 0;
-    
-    //     * Set the TIMER2 Prescale value by loading the T2CKPS 
-    //       bits on the T2CON register and enable it by setting
-    //       the TMR2ON bit on the T2CON register
-    T2CON = 0b00000111; // prescaler + turn on TMR2;
-    
-    // 6.- Enable PWM output after a new PWM cycle has started
-    //      * Wait until Timer2 overflows (TMR2IF bit of the PIR1 reg)
-    while(TMR2IF == 0);
-    
-    //      * Enable the CCPx pin output driver by clearing the 
-    //        associated TRIS bit
-    TRISC2 = OUTPUT;
-}
-
-/**
- * @brief       Updates the PWM duty cycle
- *              
+ * @brief       Configures the TMR2 Module for PWM output
+ *              Through interrupt
  *   
- * @param[in]   PWMDuty: 
- *              PWM Duty Cycle value
+ * @param[in]   None
  * 
  * @return      None
  */
-
-void PWM_Update(unsigned int PWMDuty){
-    unsigned int PWM_L, PWM_H;
-    
-    double pulseWidth;
-
-    unsigned long PWMValue = 0;
-    
-    // Pulse Width value (From 1 to 1+0.99)
-    pulseWidth = 1 + (PWMDuty * 0.0009765);
-	
-    // PWM Value, where 31 is for 1 mS (5%) and 62 is for 2 mS (10%)
-	PWMValue = (unsigned long ) (31 * pulseWidth);
-    
-    // Rotates PWM Value 2 bits and save it into PWM_H
-    PWM_H = PWMValue >> 2;
-    
-    // Clears 2 PWM LSBs
-    PWM_L = (unsigned int) (CCP1CON & 0b11001111);
-    
-    // Filters 6 More significant bits from PWM Value and save it itself
-    PWMValue &= 0b00000011;
-    
-    // PWM_VALUE Rotates itself 4 bits to left (To save into CCP1CON 5:4 bits)
-    PWMValue = PWMValue << 4;
-    
-    // Saves it into PWM_L (Which will be saved on CCP1CON to update PWM
-    // Pulse Witdh)
-    PWM_L = PWMValue + PWM_L;
-    
-    // Updating Values
-    CCP1CON = PWM_L;
-    CCPR1L  = PWM_H;
-    
-}
-
-
-
-
-
 
 void tmr2_init()
 {
@@ -446,29 +300,49 @@ void tmr2_init()
   SERVO_DIR = OUTPUT;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-///////////////////////////// FAN CONTROL FUNCTIONS ////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
+/**
+ * @brief       Loads TMR2 values according to desired servomotor behavior
+ *              Basically it enables the square 50 hz signal and using the
+ *              parameters, we can set the number of steps (movements) and
+ *              the size or lenght of the movement (degrees)
+ *   
+ * @param[in]   steps: The number of steps we required
+ * 
+ * @return      stepSize: The size of the steps (degrees). The value needs to
+ *              be between 0 and 90º, otherwise the function will return an
+ *              error
+ * 
+ * @return      0: If the operation was sucessful
+ *              1: If the stepSize value is beyond the range
+ *              2: If the steps value is equal to 0 (No operation executed)
+ */
 
-//void Fan_config_1(){
-//    FAN_1 = ON;
-//    FAN_2 = OFF;
-//    FAN_3 = OFF;
-//}
-//
-//void Fan_config_2(){
-//    FAN_1 = ON;
-//    FAN_2 = ON;
-//    FAN_3 = OFF;
-//}
-//
-//void Fan_config_3(){
-//    FAN_1 = ON;
-//    FAN_2 = ON;
-//    FAN_3 = ON;
-//}
-
-
-
-
+unsigned char servo_loader(unsigned int steps, unsigned int stepSize)
+{
+    unsigned char result = 0;       // Asumes no error by default
+    
+    if(steps)
+    {
+        if(stepSize > 0 && stepSize <= 90)
+        {
+            tmr2Counter = steps;
+            //tmr2Counter = steps * PWM_PERIOD_US;
+            pwmDutyValue = stepSize * 100 / 90 ;
+                    
+        }
+        
+        else
+            result = 1;             // stepSize beyond the allowed range
+                                    // function returns with a type 1 error
+        
+    }
+    
+    else
+        result = 2;                 // steps value equal to 0
+                                    // function returns with a type 2 error
+    
+    return result;                  // return from call
+    
+    
+}
 
