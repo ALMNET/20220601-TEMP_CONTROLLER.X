@@ -22,8 +22,6 @@
 
 #include "LCD_LIB.h"
 
-
-
 ////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// TEMPERATURE DEFINITIONS ///////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -51,9 +49,25 @@
 #define PWM_PERIOD_US   100
 //////////////////////////////////// INPUTS ////////////////////////////////////
 
-// PORTA 
+
 #define TEMP_CHANNEL_DIR    TRISA0
 #define TEMP_CHANNEL        RA0
+
+
+#define IN_IR_DIR           TRISB1
+#define IN_IR               RB1
+
+#define OUT_IR_DIR          TRISB2
+#define OUT_IR              RB2
+
+#define BUTTON_INC_DIR      TRISB3
+#define BUTTON_INC          RB3
+
+#define BUTTON_DEC_DIR      TRISB4
+#define BUTTON_DEC          RB4
+
+#define BUTTON_SET_DIR      TRISB5
+#define BUTTON_SET          RB5
 
 /////////////////////////////////// OUTPUTS ////////////////////////////////////
 
@@ -67,7 +81,7 @@
 // Temperature value obtained from ADC Read
 unsigned int temperature;           // Read temperature from PT100 / LM35
 
-unsigned long pwmDutyValue = 70;    // Duty Cycle, from 0 to 100 (0 to 100%)
+unsigned long pwmDutyValue = 0;    // Duty Cycle, from 0 to 100 (0 to 100%)
 unsigned long pwmDutyCnt = 0;       // Duty counter (increments until reach pwmDutyValue)
 unsigned long pwmPeriod = 0;        // pwm Period counter
 
@@ -84,14 +98,13 @@ char buffer[64];                    // Buffer for lcd messages
 // General delay function
 void delay_ms(unsigned long delay_value);
 
-// ADC Functions
+// ADC Prototypes
 void ADC_Init(const unsigned char adcEnabledChannels);
 unsigned int ADC_Read(unsigned char adcChannel);
 
-// PWM Functions for servomotor control
-void PWM_Init();
-void PWM_Update(unsigned int PWMDuty);
+// PWM Prototypes
 void tmr2_init();
+unsigned char servo_loader(unsigned long steps, unsigned char stepSize);
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -106,7 +119,6 @@ void interrupt ISR()
         
         if(tmr2Counter)
         {
-//            tmr2Counter--;
             if(pwmPeriod < PWM_PERIOD_US)
             {
                 if(pwmDutyCnt < pwmDutyValue)
@@ -141,15 +153,27 @@ void interrupt ISR()
 
 void main(void){
     
-
+    // Configuring Inputs
     TEMP_CHANNEL_DIR    = INPUT;
+    
+    IN_IR_DIR           = INPUT;
+    OUT_IR_DIR          = INPUT;
+    
+    BUTTON_INC_DIR      = INPUT;
+    BUTTON_DEC_DIR      = INPUT;
+    BUTTON_SET_DIR      = INPUT;
+            
+    // Configuring Outputs
     SERVO_DIR = OUTPUT;
     
-    ADC_Init(1);
-    LCD_Init();
+    ADC_Init(1);        // Initializing Internal ADC Module
+    LCD_Init();         // Initializing LCD (I/O, Bus width and operation modes)
     
-    tmr2_init();
-//    LCD_sendData('H');
+    
+    delay_ms(1000);
+    tmr2_init();        // Initializing and configuring tmr2 (100 uS overflow)
+            
+    servo_loader(200, 45);
     
     while(1){
         
@@ -158,9 +182,10 @@ void main(void){
         
 //        Lcd_Out(1, 8 - (strlen(buffer) / 2), buffer);
         
-        temperature = (unsigned int) ADC_Read(TEMP_CHANNEL);
+        // "Unsigned ints" are used for casting to clear compilation warnings
+        temperature = ADC_Read((unsigned char)TEMP_CHANNEL);
         
-        PWM_Update(temperature);
+//        PWM_Update(temperature);
         
         sprintf(buffer, "Valor = %04u", temperature);
         LCD_out(1, 1, buffer);
@@ -179,7 +204,9 @@ void main(void){
         // 0.489 Is a conversion factor according to LM35 output
         // The Internal ADC step at 10bit 5v is 5v/2^10-1, which means
         // 5/1023 = 0.48875. we can approximate it to 0.489 for the LM35
-        temperature = (unsigned int)(ADC_Read(TEMP_CHANNEL) * 0.489);
+        
+        // "Unsigned ints" are used for casting to clear compilation warnings
+        temperature = (unsigned int) (ADC_Read((unsigned char)TEMP_CHANNEL) * 0.489);
         
         
         
@@ -290,14 +317,13 @@ void tmr2_init()
   T2CON	     = 0x04;
   PR2        = 199;
   TMR2IE     = 1;
-  INTCON     = 0xC0;
   
-  INTCONbits.GIE = 1;
-  INTCONbits.PEIE = 1;
+  INTCONbits.GIE = 1;       // Global Interrupt Enable
+  INTCONbits.PEIE = 1;      // Peripheral Interrupt Enable
   
-  PIE1bits.TMR2IE = 1;
+  PIE1bits.TMR2IE = 1;      // TMR2 specific Interrupt Enable
   
-  SERVO_DIR = OUTPUT;
+  SERVO_DIR = OUTPUT;       // Servo pin as output
 }
 
 /**
@@ -317,7 +343,7 @@ void tmr2_init()
  *              2: If the steps value is equal to 0 (No operation executed)
  */
 
-unsigned char servo_loader(unsigned int steps, unsigned int stepSize)
+unsigned char servo_loader(unsigned long steps, unsigned char stepSize)
 {
     unsigned char result = 0;       // Asumes no error by default
     
@@ -326,17 +352,14 @@ unsigned char servo_loader(unsigned int steps, unsigned int stepSize)
         if(stepSize > 0 && stepSize <= 90)
         {
             tmr2Counter = steps;
-            //tmr2Counter = steps * PWM_PERIOD_US;
-            pwmDutyValue = stepSize * 100 / 90 ;
+            pwmDutyValue = (unsigned long) stepSize * 10 / 90 ;
                     
         }
         
         else
             result = 1;             // stepSize beyond the allowed range
                                     // function returns with a type 1 error
-        
     }
-    
     else
         result = 2;                 // steps value equal to 0
                                     // function returns with a type 2 error
