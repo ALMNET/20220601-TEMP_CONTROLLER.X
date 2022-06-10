@@ -79,7 +79,7 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 // Temperature value obtained from ADC Read
-unsigned int temperature;           // Read temperature from PT100 / LM35
+float temperature;                  // Read temperature from PT100 / LM35
 
 unsigned long pwmDutyValue = 0;    // Duty Cycle, from 0 to 100 (0 to 100%)
 unsigned long pwmDutyCnt = 0;       // Duty counter (increments until reach pwmDutyValue)
@@ -169,52 +169,35 @@ void main(void){
     ADC_Init(1);        // Initializing Internal ADC Module
     LCD_Init();         // Initializing LCD (I/O, Bus width and operation modes)
     
-    
-    delay_ms(1000);
     tmr2_init();        // Initializing and configuring tmr2 (100 uS overflow)
-            
+         
+
+    // TODO: Delete this section
+    // Call servo loader for servo testing on simulation.
     servo_loader(200, 45);
     
     while(1){
         
-        // Load a formated string on a temporal 128 bytes buffer
-//        sprintf(buffer, "ADC Value  = %04lu", ADC_Read());
+        // Refer to attached excel tables for reference about Zero and Span
+        // Values.
         
-//        Lcd_Out(1, 8 - (strlen(buffer) / 2), buffer);
+        // Zero compensated, Because on 100 ohm 0ºC, the read value is 24, so
+        // in that way we force the value to 0 at 100 ohm, 0ºC)
+        temperature = ADC_Read((unsigned char)TEMP_CHANNEL) - 24;
         
-        // "Unsigned ints" are used for casting to clear compilation warnings
-        temperature = ADC_Read((unsigned char)TEMP_CHANNEL);
+        // Span compensation
+        temperature *= 0.277141877;
         
-//        PWM_Update(temperature);
+        // Save the formated string in the buffer array
+        sprintf(buffer, "Valor = %2.2f", temperature);
         
-        sprintf(buffer, "Valor = %04u", temperature);
+        // Message out through LCD
         LCD_out(1, 1, buffer);
         
+        // 100 ms refresh delay (10 Frames per sec aprox)
         delay_ms(100);
-    }
-    
-    
-    
-    
-    
-    
-    
-    do{  // Start Infinite loop
         
-        // 0.489 Is a conversion factor according to LM35 output
-        // The Internal ADC step at 10bit 5v is 5v/2^10-1, which means
-        // 5/1023 = 0.48875. we can approximate it to 0.489 for the LM35
-        
-        // "Unsigned ints" are used for casting to clear compilation warnings
-        temperature = (unsigned int) (ADC_Read((unsigned char)TEMP_CHANNEL) * 0.489);
-        
-        
-        
-        
-        
-        
-        
-    }while(1);  // Infinite loop
+    }   // Infinite loop
     
 }
 
