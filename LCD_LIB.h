@@ -44,7 +44,7 @@
 #define LCD_RD7_DIR TRISC7
 
 
-#define LCD_DELAY_MSG     500
+#define LCD_DELAY_MSG     1000
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -80,7 +80,7 @@ unsigned char LCD_sendData(unsigned char lcd_data);
 unsigned char LCD_out(char pos_y, char pos_x, char * lcd_msg);
 void LCD_out_CP(char * lcd_msg);
 
-void LCD_Message(char * LINE1_MSG, char * LINE2_MSG);
+void LCD_Message(char LINE1_MSG[], char LINE2_MSG[]);
 void LCD_Init();
 
 

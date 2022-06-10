@@ -46,7 +46,14 @@
 
 #define DISP_TIME   1
 
-#define PWM_PERIOD_US   100
+#define PWM_PERIOD_US   100     // Period factor. 
+                                // PWM Period = 200 * PWM_PERIOD_US
+                                // This is because tmr2 is configured to 
+                                // overflow at 200 us, so, for PWM_PERIOD_US = 100
+                                // the PWM Period will be 20000 us => 20 mS
+                                // or 50 hz for a good operation of the servo
+
+#define MAX_PERSON  50          // To set max number of persons
 //////////////////////////////////// INPUTS ////////////////////////////////////
 
 
@@ -74,6 +81,8 @@
 // SERVO
 #define SERVO_DIR           TRISC2
 #define SERVO               RC2
+
+
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// VARIABLES  //////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -90,6 +99,15 @@ unsigned long tmr2Counter = 0;      // Counter to enable or disable the tmr2 int
                                     // otherwise it will be enabled.
 
 char buffer[64];                    // Buffer for lcd messages
+
+///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////// SCREENS  ///////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+const unsigned char  msgWelcome[2][16] = {" WELCOME", "SCREEN"};
+const unsigned char  msgCrowded[2][16] = {"ROOM", "CROWDED"};
+const unsigned char  msgDenied [2][16] = {"ACCESS", "DENIED"};
+const unsigned char  msgGranted[2][16] = {"ACCESS", "GRANTED"};
 
 ///////////////////////////////////////////////////////////////////////////////
 /////////////////////////// PROTOTYPES FUNCTIONS  /////////////////////////////
@@ -170,11 +188,13 @@ void main(void){
     LCD_Init();         // Initializing LCD (I/O, Bus width and operation modes)
     
     tmr2_init();        // Initializing and configuring tmr2 (100 uS overflow)
-         
+    
+    // Welcome Screen
+    LCD_Message("WELCOME", "SCREEN");
 
     // TODO: Delete this section
     // Call servo loader for servo testing on simulation.
-    servo_loader(200, 45);
+//    servo_loader(200, 45);
     
     while(1){
         
@@ -189,7 +209,7 @@ void main(void){
         temperature *= 0.277141877;
         
         // Save the formated string in the buffer array
-        sprintf(buffer, "Valor = %2.2f", temperature);
+        sprintf(buffer, "Temperature = %2.2f", temperature);
         
         // Message out through LCD
         LCD_out(1, 1, buffer);

@@ -184,23 +184,21 @@ void LCD_out_CP(char * lcd_msg){
 }
 
 
-void LCD_Message(char * LINE1_MSG, char * LINE2_MSG){
-    
+void LCD_Message(char LINE1_MSG[], char LINE2_MSG[]){
+       
     LCD_Cmd(CLEAR_LCD);              // Clear display  
     
-    LCD_Cmd(HOME_LINE1);
-    for (int j = 0; LINE1_MSG[j] != 0; j++)     
-        LCD_sendData(LINE1_MSG[j]); 
-//    Lcd_Out(1, 8 - (strlen(buffer) / 2), buffer);
+    // Prints centered message on 1st line
+    LCD_out(1, 8 - (strlen(LINE1_MSG) / 2), LINE1_MSG);
     
-    LCD_Cmd(HOME_LINE2);
-    for (int j = 0; LINE2_MSG[j] != 0; j++)     
-        LCD_sendData(LINE2_MSG[j]); 
-//    Lcd_Out(1, 8 - (strlen(buffer) / 2), buffer);
+    // Prints centered message on 2nd line
+    LCD_out(2, 8 - (strlen(LINE2_MSG) / 2), LINE2_MSG);
       
     
     // LCD_DELAY_MSG screens delay
     for(int counter = 0; counter < LCD_DELAY_MSG; counter++)    _delay(1000);
+    
+    LCD_Cmd(CLEAR_LCD);              // Clear display  
     
 }
 
