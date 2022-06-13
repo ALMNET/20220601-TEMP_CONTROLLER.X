@@ -12,9 +12,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
 #include "Fuses.h"
 
 #define _XTAL_FREQ 4000000
@@ -54,6 +52,9 @@
                                 // or 50 hz for a good operation of the servo
 
 #define MAX_PERSON  50          // To set max number of persons
+
+
+#define TEMP_FACTOR 0.277141877
 //////////////////////////////////// INPUTS ////////////////////////////////////
 
 
@@ -61,11 +62,11 @@
 #define TEMP_CHANNEL        RA0
 
 
-#define IN_IR_DIR           TRISB1
-#define IN_IR               RB1
+#define IR_IN_DIR           TRISB1
+#define IR_IN               RB1
 
-#define OUT_IR_DIR          TRISB2
-#define OUT_IR              RB2
+#define IR_OUT_DIR          TRISB2
+#define IR_OUT              RB2
 
 #define BUTTON_INC_DIR      TRISB3
 #define BUTTON_INC          RB3
@@ -82,6 +83,15 @@
 #define SERVO_DIR           TRISC2
 #define SERVO               RC2
 
+// SERVO
+#define BUZZER_DIR           TRISC3
+#define BUZZER               RC3
+
+
+#define PRESET_STEP_SIZE        90
+#define NUMBER_OF_TURNS     50    
+
+#define CALC_STEPS    NUMBER_OF_TURNS * (360 / PRESET_STEP_SIZE)     
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// VARIABLES  //////////////////////////////////
@@ -89,6 +99,12 @@
 
 // Temperature value obtained from ADC Read
 float temperature;                  // Read temperature from PT100 / LM35
+float temperatureSet = 37.0;     
+float maxTempSampled = 0;     
+
+
+unsigned char capacitySet = 20;            // Room capacity set
+unsigned char capacity = 0;            // Room capacity set
 
 unsigned long pwmDutyValue = 0;    // Duty Cycle, from 0 to 100 (0 to 100%)
 unsigned long pwmDutyCnt = 0;       // Duty counter (increments until reach pwmDutyValue)
@@ -100,13 +116,16 @@ unsigned long tmr2Counter = 0;      // Counter to enable or disable the tmr2 int
 
 char buffer[64];                    // Buffer for lcd messages
 
+enum FSM{DEFAULT, TEMP_SET, ROOM_CROWD_RANGE} setButtonState;
+
 ///////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////// SCREENS  ///////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
 const unsigned char  msgWelcome[2][16] = {" WELCOME", "SCREEN"};
+const unsigned char  msgTempCheck[2][16] = {"CHECKING", "TEMP"};
 const unsigned char  msgCrowded[2][16] = {"ROOM", "CROWDED"};
-const unsigned char  msgDenied [2][16] = {"ACCESS", "DENIED"};
+const unsigned char  msgDenied[2][16] = {"ACCESS", "DENIED"};
 const unsigned char  msgGranted[2][16] = {"ACCESS", "GRANTED"};
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -123,6 +142,8 @@ unsigned int ADC_Read(unsigned char adcChannel);
 // PWM Prototypes
 void tmr2_init();
 unsigned char servo_loader(unsigned long steps, unsigned char stepSize);
+
+void buzzer_beep();
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -174,15 +195,21 @@ void main(void){
     // Configuring Inputs
     TEMP_CHANNEL_DIR    = INPUT;
     
-    IN_IR_DIR           = INPUT;
-    OUT_IR_DIR          = INPUT;
+    IR_IN_DIR           = INPUT;
+    IR_OUT_DIR          = INPUT;
     
     BUTTON_INC_DIR      = INPUT;
     BUTTON_DEC_DIR      = INPUT;
     BUTTON_SET_DIR      = INPUT;
+    
+    OPTION_REGbits.nRBPU = 0;
             
     // Configuring Outputs
     SERVO_DIR = OUTPUT;
+    
+    BUZZER_DIR = OUTPUT;
+    
+    setButtonState = DEFAULT;
     
     ADC_Init(1);        // Initializing Internal ADC Module
     LCD_Init();         // Initializing LCD (I/O, Bus width and operation modes)
@@ -190,29 +217,177 @@ void main(void){
     tmr2_init();        // Initializing and configuring tmr2 (100 uS overflow)
     
     // Welcome Screen
-    LCD_Message("WELCOME", "SCREEN");
-
+    //LCD_Message(msgWelcome[0], msgWelcome[1]);
+    
+    
+    //LCD_Message(msgTempCheck[0], msgTempCheck[1]);
+    
+//    const unsigned char  msgWelcome[2][16] = {" WELCOME", "SCREEN"};
+//const unsigned char  msgCrowded[2][16] = {"ROOM", "CROWDED"};
+//const unsigned char  msgDenied [2][16] = {"ACCESS", "DENIED"};
+//const unsigned char  msgGranted[2][16] = {"ACCESS", "GRANTED"};
+    
     // TODO: Delete this section
     // Call servo loader for servo testing on simulation.
 //    servo_loader(200, 45);
     
     while(1){
         
+        
+        if(!BUTTON_SET)
+        {
+            do{
+                
+                // Save the formated string in the buffer array
+                sprintf(buffer, "Temp Set: %2.2f", temperatureSet);
+
+                // Message out through LCD
+                
+                LCD_out(1, 8 - (strlen(buffer) / 2), buffer);
+                
+                if(!BUTTON_INC){ temperatureSet += 0.1; }
+                
+                if(!BUTTON_DEC){ 
+                    if(temperatureSet > 0.1)
+                        temperatureSet -= 0.1;  
+                }
+                
+                delay_ms(100);
+                
+            }while(BUTTON_SET);
+            
+            delay_ms(100); // Debouncing
+            
+            LCD_Cmd(CLEAR_LCD);              // Clear display  
+            
+            do{
+                // Save the formated string in the buffer array
+                sprintf(buffer, "Set # Persons:");
+
+                // Message out through LCD
+                LCD_out(1, 8 - (strlen(buffer) / 2), buffer);
+                
+                // Save the formated string in the buffer array
+                sprintf(buffer, "%u", capacitySet);
+
+                // Message out through LCD
+                LCD_out(2, 8 - (strlen(buffer) / 2), buffer);
+                
+                if(!BUTTON_INC){ capacitySet++; }
+                
+                if(!BUTTON_DEC){ 
+                    if(capacitySet > 0)
+                        capacitySet--; 
+                }
+                
+                delay_ms(100);
+                
+            }while(BUTTON_SET);
+            
+            delay_ms(100); // Debouncing
+            
+            LCD_Cmd(CLEAR_LCD);              // Clear display  
+            
+        }
+        
+        
+        
+        
+        // Check if a person enter
+        if(!IR_IN)
+        {
+            
+            if(capacity >= capacitySet)
+            {
+                LCD_Message(msgCrowded[0], msgCrowded[1]);
+
+                while(IR_OUT); // wait until a person go out
+                capacity--;
+
+                delay_ms(100);  // Debouncing
+            
+            
+            }
+            else{
+                
+                
+                LCD_Message(msgTempCheck[0], msgTempCheck[1]);            
+                
+                maxTempSampled = 0;
+                
+                for(int i = 1; i <= 10; i++)    // 10 samples, 1 sec total sampling
+                {
+                    temperature = (ADC_Read((unsigned char)TEMP_CHANNEL) * 0.2689) - 7.8127;
+
+                    // Span compensation
+                    //temperature *= TEMP_FACTOR;
+
+                    // Save the formated string in the buffer array
+                    sprintf(buffer, "Checking Temp");
+
+                    // Message out through LCD
+                    LCD_out(1, 8 - (strlen(buffer) / 2), buffer);
+
+                    // Save the formated string in the buffer array
+                    sprintf(buffer, "%2.2f %cC", temperature, 0xDF);
+
+                    // Message out through LCD
+                    LCD_out(2, 8 - (strlen(buffer) / 2), buffer);
+                
+                    if(maxTempSampled < temperature)
+                        maxTempSampled = temperature;
+                    
+                    delay_ms(100);
+                }
+                
+                if(maxTempSampled < temperatureSet){
+                    LCD_Message(msgGranted[0], msgGranted[1]);  
+                    
+                    
+                    capacity++;
+                    
+                    #warning "Sir, Remember to set servo values before using this function"
+                    servo_loader(CALC_STEPS, PRESET_STEP_SIZE);
+                    
+                }
+                else{
+                    
+                    LCD_Message(msgDenied[0], msgDenied[1]);  
+                    
+                    buzzer_beep();
+                }
+            }
+        }
+        
+                
+        // Check if a person go out
+        if(!IR_OUT){
+            if(capacity > 0)    // Just to avoid the posibility of a random zero
+                capacity--;
+            delay_ms(100);  // Debouncing
+        }
+        
         // Refer to attached excel tables for reference about Zero and Span
         // Values.
         
         // Zero compensated, Because on 100 ohm 0ºC, the read value is 24, so
         // in that way we force the value to 0 at 100 ohm, 0ºC)
-        temperature = ADC_Read((unsigned char)TEMP_CHANNEL) - 24;
+        temperature = (ADC_Read((unsigned char)TEMP_CHANNEL) * 0.2689) - 7.8127;
         
         // Span compensation
-        temperature *= 0.277141877;
+        //temperature *= TEMP_FACTOR;
         
         // Save the formated string in the buffer array
-        sprintf(buffer, "Temperature = %2.2f", temperature);
+        sprintf(buffer, "Temp = %2.2f%cC", temperature, 0xDF);
         
         // Message out through LCD
-        LCD_out(1, 1, buffer);
+        LCD_out(1, 8 - (strlen(buffer) / 2), buffer);
+        
+        // Save the formated string in the buffer array
+        sprintf(buffer, "# Persons: %u", capacity);
+        
+        // Message out through LCD
+        LCD_out(2, 8 - (strlen(buffer) / 2), buffer);
         
         // 100 ms refresh delay (10 Frames per sec aprox)
         delay_ms(100);
@@ -372,3 +547,11 @@ unsigned char servo_loader(unsigned long steps, unsigned char stepSize)
     
 }
 
+
+
+void buzzer_beep()
+{
+    BUZZER = ON;
+    delay_ms(1000);
+    BUZZER = OFF;
+}
