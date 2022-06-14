@@ -141,7 +141,7 @@ unsigned int ADC_Read(unsigned char adcChannel);
 
 // PWM Prototypes
 void tmr2_init();
-unsigned char servo_loader(unsigned long steps, unsigned char stepSize);
+unsigned char servo_loader(unsigned char stepSize);
 
 void buzzer_beep();
 
@@ -156,29 +156,26 @@ void interrupt ISR()
         
         TMR2IF = 0;
         
-        if(tmr2Counter)
+        
+        if(pwmPeriod < PWM_PERIOD_US)
         {
-            if(pwmPeriod < PWM_PERIOD_US)
+            if(pwmDutyCnt < pwmDutyValue)
             {
-                if(pwmDutyCnt < pwmDutyValue)
-                {
-                    SERVO = 1;
+                SERVO = 1;
 
-                    pwmDutyCnt++;
-                }
-
-                else{
-                    SERVO = 0;
-                }
-
-                pwmPeriod++;
+                pwmDutyCnt++;
             }
-            else
-            {
-                pwmPeriod = 0;
-                pwmDutyCnt = 0;
-                tmr2Counter--;
+
+            else{
+                SERVO = 0;
             }
+
+            pwmPeriod++;
+        }
+        else
+        {
+            pwmPeriod = 0;
+            pwmDutyCnt = 0;
         }
         
     }
@@ -206,6 +203,7 @@ void main(void){
             
     // Configuring Outputs
     SERVO_DIR = OUTPUT;
+    SERVO = OFF;
     
     BUZZER_DIR = OUTPUT;
     
@@ -217,25 +215,18 @@ void main(void){
     tmr2_init();        // Initializing and configuring tmr2 (100 uS overflow)
     
     // Welcome Screen
-    //LCD_Message(msgWelcome[0], msgWelcome[1]);
+    LCD_Message(msgWelcome[0], msgWelcome[1]);
     
     
-    //LCD_Message(msgTempCheck[0], msgTempCheck[1]);
-    
-//    const unsigned char  msgWelcome[2][16] = {" WELCOME", "SCREEN"};
-//const unsigned char  msgCrowded[2][16] = {"ROOM", "CROWDED"};
-//const unsigned char  msgDenied [2][16] = {"ACCESS", "DENIED"};
-//const unsigned char  msgGranted[2][16] = {"ACCESS", "GRANTED"};
-    
-    // TODO: Delete this section
-    // Call servo loader for servo testing on simulation.
-//    servo_loader(200, 45);
+    LCD_Message(msgTempCheck[0], msgTempCheck[1]);
     
     while(1){
         
-        
         if(!BUTTON_SET)
         {
+            
+            LCD_Cmd(CLEAR_LCD);              // Clear display  
+            
             do{
                 
                 // Save the formated string in the buffer array
@@ -347,7 +338,11 @@ void main(void){
                     capacity++;
                     
                     #warning "Sir, Remember to set servo values before using this function"
-                    servo_loader(CALC_STEPS, PRESET_STEP_SIZE);
+                    servo_loader(180);
+                    
+                    delay_ms(1000);
+                    
+                    servo_loader(90);
                     
                 }
                 else{
@@ -494,12 +489,15 @@ void tmr2_init()
 {
   T2CON	     = 0x04;
   PR2        = 199;
-  TMR2IE     = 1;
+  //TMR2IE     = 1;
+  
+  PIE1bits.TMR2IE = 1;      // TMR2 specific Interrupt Enable
   
   INTCONbits.GIE = 1;       // Global Interrupt Enable
   INTCONbits.PEIE = 1;      // Peripheral Interrupt Enable
   
-  PIE1bits.TMR2IE = 1;      // TMR2 specific Interrupt Enable
+  
+  //PIE1bits.TMR2IE = 1;      // TMR2 specific Interrupt Enable
   
   SERVO_DIR = OUTPUT;       // Servo pin as output
 }
@@ -512,35 +510,28 @@ void tmr2_init()
  *   
  * @param[in]   steps: The number of steps we required
  * 
- * @return      stepSize: The size of the steps (degrees). The value needs to
+ * @param[in]   stepSize: The size of the steps (degrees). The value needs to
  *              be between 0 and 90º, otherwise the function will return an
  *              error
  * 
  * @return      0: If the operation was sucessful
  *              1: If the stepSize value is beyond the range
- *              2: If the steps value is equal to 0 (No operation executed)
  */
 
-unsigned char servo_loader(unsigned long steps, unsigned char stepSize)
+unsigned char servo_loader(unsigned char stepSize)
 {
     unsigned char result = 0;       // Asumes no error by default
     
-    if(steps)
+    if(stepSize <= 180)
     {
-        if(stepSize > 0 && stepSize <= 90)
-        {
-            tmr2Counter = steps;
-            pwmDutyValue = (unsigned long) stepSize * 10 / 90 ;
-                    
-        }
-        
-        else
-            result = 1;             // stepSize beyond the allowed range
-                                    // function returns with a type 1 error
+        pwmDutyValue = (unsigned long) stepSize * 10 / 180 ;
+
     }
+
     else
-        result = 2;                 // steps value equal to 0
-                                    // function returns with a type 2 error
+        result = 1;             // stepSize beyond the allowed range
+                                // function returns with a type 1 error
+
     
     return result;                  // return from call
     

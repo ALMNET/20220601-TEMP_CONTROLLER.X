@@ -198,8 +198,6 @@ void LCD_Message(char LINE1_MSG[], char LINE2_MSG[]){
     // LCD_DELAY_MSG screens delay
     for(int counter = 0; counter < LCD_DELAY_MSG; counter++)    _delay(1000);
     
-    LCD_Cmd(CLEAR_LCD);              // Clear display  
-    
 }
 
 void LCD_Init(){    
